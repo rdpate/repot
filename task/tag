@@ -1,0 +1,19 @@
+#!/bin/sh -Cue
+#.help
+# % PRERELEASE
+#
+# Run tests and tag.  PRERELEASE must be empty to denote no prerelease.
+fatal() { rc="$1"; shift; printf %s\\n "${0##*/} error: $*" >&2 || true; exit "$rc"; }
+while [ $# -gt 0 ]; do case "$1" in --) shift; break ;; -) break ;; -*) fatal 64 'unexpected option' ;; *) break ;; esac; done
+case "$#" in
+    0) fatal 64 'missing PRERELEASE argument' ;;
+    1) ;;
+    2) fatal 64 'unexpected arguments' ;;
+    esac
+if [ '' = "$1" ]; then
+    set --
+    fi
+cd "${0%/*}/.."
+# TODO: create task/test
+task/test
+repo-tag "$@"

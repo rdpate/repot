@@ -4,8 +4,10 @@
 #
 # Show version of TARGET (or current directory).
 #
-# The first successful method determines the version:
-# * `help --synopsis --section=version TARGET`
+# Options:
+#    --quiet                  no warnings
+#
+# Determine version with "help --version TARGET" or loop until successful:
 # * if TARGET exists and is a directory
 #     * if directory .hg
 #         * if pristine, hg tag matching semver format
@@ -81,10 +83,14 @@ while [ $# -gt 0 ]; do
     done
 
 case "$#" in
-    0) set -- . ;;
-    1) ;;
+    0) target=. ;;
+    1) target="$1" ;;
     *) fatal 70 'unexpected arguments' ;;
     esac
+if help --version "$target" 2>/dev/null; then
+    exit 0
+    fi
+
 do_tags() {
     while [ -n "$tags" ]; do
         tag="${tags%%:*}"
@@ -146,15 +152,12 @@ git_branch() {
     do_tags_greater "$branch"
     }
 
-case "$1" in
-    /*) target="$1" ;;
-    .) target="$(readlink -f .)" ;;
-    *) target="$(readlink -f .)/$1" ;;
-    esac
+need_canon=false
 repo=
 while true; do
-    if help --synopsis --section=version "$target" 2>/dev/null; then
-        break
+    if $need_canon && [ -e "$target" ]; then
+        target="$(readlink -f -- "$target")"
+        need_canon=false
         fi
     if [ -d "$target" ]; then
         cd "$target"

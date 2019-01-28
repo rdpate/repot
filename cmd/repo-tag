@@ -4,6 +4,9 @@
 #
 # Tag current working directory, which must be pristine (clean without unknown files).  PRERELEASE is added as prerelease.
 #
+# Options:
+#    --quiet                  no warnings
+#
 # Premise:
 # * tags are recorded in dedicated ".tags" branch
 # * tag names are "M.N.P[-R]"
@@ -81,16 +84,9 @@ while [ $# -gt 0 ]; do
 if [ $# = 0 ]; then
     ver_suffix=
 else
-    case "$1" in
-        [-\ .]*) fatal 64 'invalid prerelease' ;;
-        *.*) ;;
-        *) fatal 64 'invalid tag prerelease (must end with numeric part)' ;;
-        esac
-    case "${1##*.}" in
-        0) ;;
-        0*|*[!0123456789]*)
-            fatal 64 'invalid tag prerelease (must end with numeric part)'
-            ;;
+    case ".$1" in
+        .|*' '*|*[-.][-.]*|*.0[0123456789]*) fatal 64 'invalid prerelease' ;;
+        # TODO: does semver allow "a--b", "a.-b", or "a.-3" for prerelease?
         esac
     # TODO: more prerelease syntax checks
     # TODO: auto-increment prerelease? prevent skipping numeric parts?
