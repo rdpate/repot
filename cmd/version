@@ -1,0 +1,188 @@
+#!/bin/sh -Cue
+#.help
+# % [TARGET]
+#
+# Show version of TARGET (or current directory).
+#
+# The first successful method determines the version:
+# * `help --synopsis --section=version TARGET`
+# * if TARGET exists and is a directory
+#     * if directory .hg
+#         * if pristine, hg tag matching semver format
+#         * if hg bookmark matching MAJOR.MINOR, add next PATCH and "-dev"
+#     * if directory .git
+#         * if pristine, git tag matching semver format
+#         * if git branch matching MAJOR.MINOR, add next PATCH and "-dev"
+#     * if encountered .hg or .git, "0.1.0-dev"
+# * TARGET basename, if in semver format
+# * longest dashed-suffix of TARGET basename in semver format
+#     * eg. "1.2.3" in "basename-1.2.3"
+# * restart with TARGET dirname, or exit with an error if TARGET is /
+
+pkg="$(readlink -f -- "$0")"
+pkg="${pkg%/*/*}"
+. "$pkg/lib/common.sh"
+handle_option() {
+    case "$1" in
+        quiet)
+            [ $# = 1 ] || fatal 64 "unexpected value for option $1"
+            quiet=true
+            ;;
+        *) fatal 64 "unknown option $1" ;;
+        esac
+    }
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --) shift; break ;;
+        --=*) fatal 64 'missing option name' ;;
+        --*=*)
+            x="${1#--}"
+            v="${x#*=}"
+            x="${x%%=*}"
+            case "$x" in
+                :?*|*[\ \`\~\!\@\#\$\%\^\&\*\\\|\;\'\"\?]*) fatal 64 'bad option name' ;;
+                :)
+                    shift
+                    x="$v"
+                    while [ -n "$x" ]; do
+                        v="${x%?}"
+                        set -- -"${x#"$v"}" "$@"
+                        x="$v"
+                        done
+                    ;;
+                *)
+                    handle_option "$x" "$v"
+                    shift
+                    ;;
+                esac
+            ;;
+        --:) shift ;;
+        --:*|--*[\ \`\~\!\@\#\$\%\^\&\*\\\|\;\'\"\?]*) fatal 64 'bad option name' ;;
+        --*) handle_option "${1#--}"; shift ;;
+        -*[\ \`\~\!\@\#\$\%\^\&\*\=\\\|\;\'\"\?]*) fatal 64 'bad option name' ;;
+        -:*)
+            x="${1#??}"
+            shift
+            while [ -n "$x" ]; do
+                v="${x%?}"
+                set -- -"${x#"$v"}" "$@"
+                x="$v"
+                done
+            ;;
+        -?) handle_option "${1#-}"; shift ;;
+        -?*)
+            v="${1#??}"
+            x="${1%"$v"}"
+            handle_option "${x#-}" "$v"
+            shift
+            ;;
+        *) break ;;
+        esac
+    done
+
+case "$#" in
+    0) set -- . ;;
+    1) ;;
+    *) fatal 70 'unexpected arguments' ;;
+    esac
+do_tags() {
+    while [ -n "$tags" ]; do
+        tag="${tags%%:*}"
+        tags="${tags#*:}"
+        if parse_semver "$tag"; then
+            exec printf %s\\n "$tag"
+            fi
+        done
+    }
+do_tags_greater() { # PREFIX
+    found=false
+    while [ -n "$tags" ]; do
+        tag="${tags%%:*}"
+        tags="${tags#*:}"
+        case "$tag" in
+            "$1".*) ;;
+            *) continue ;;
+            esac
+        if $found; then
+            set_greater_semver "$tag"
+        elif parse_semver "$tag"; then
+            found=true
+            fi
+        done
+    if $found; then
+        exec printf %s\\n "$major.$minor.$(( patch + 1 ))-dev"
+        fi
+    exec printf %s\\n "$1.0-dev"
+    }
+hg_is_pristine() {
+    # "pristine" = clean without unknown files
+    # hg identify doesn't consider unknown files when marking clean/dirty
+    [ -z "$(hg status | head -n1)" ]
+    }
+hg_tag() {
+    hg_is_pristine || return 0
+    tags="$(hg identify -t -T'{tags}:')"
+    [ : != "$tags" ] || return 0
+    do_tags
+    }
+hg_bookmark() {
+    bookmark="$(hg identify -T'{join(bookmarks,"\n")}\n' | grep -Ex '[0-9]+\.[0-9]+' | sort -rV | head -n1)"
+    [ -n "$bookmark" ] || return 0
+    tags="$(hg tags --quiet | tr \\n :)"
+    do_tags_greater "$bookmark"
+    }
+git_tag() {
+    fatal 70 'TODO: test if pristine'
+    fatal 70 'TODO: list only tags applicable to current working directory'
+    tags="$(git tags -l '[0123456789].[0123456789].[0123456789]*' | tr \\n :)"
+    do_tags
+    }
+git_branch() {
+    fatal 70 'TODO: get branch name matching MAJOR.MINOR'
+    # TODO: error if more than one?
+    branch=
+    [ -n "$branch" ] || return 0
+    tags="$(git tags -l '[0123456789].[0123456789].[0123456789]*' | tr \\n :)"
+    do_tags_greater "$branch"
+    }
+
+case "$1" in
+    /*) target="$1" ;;
+    .) target="$(readlink -f .)" ;;
+    *) target="$(readlink -f .)/$1" ;;
+    esac
+repo=
+while true; do
+    if help --synopsis --section=version "$target" 2>/dev/null; then
+        break
+        fi
+    if [ -d "$target" ]; then
+        cd "$target"
+        if [ -d .hg ]; then
+            repo=hg
+            hg_tag
+            hg_bookmark
+            fi
+        if [ -d .git ]; then
+            repo="${repo:+$repo/}git"
+            git_tag
+            git_branch
+            fi
+        if [ -n "$repo" ]; then
+            nonfatal "found $repo repo without a matching tag or branch"
+            exec printf %s\\n '0.1.0-dev'
+            fi
+        fi
+    name="${target##*/}"
+    while true; do
+        if parse_semver "$name"; then
+            exec printf %s\\n "$name"
+            fi
+        case "$name" in
+            *-*) name="${name#*-}" ;;
+            *) break ;;
+            esac
+        done
+    target="${target%/*}"
+    [ -n "$target" ] || exit 69
+    done
