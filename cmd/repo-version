@@ -6,29 +6,34 @@
 #
 # Options:
 #    --quiet                  no warnings
+#    --dev=DEV                development prerelease (default dev)
+#    --initial=STRING         initial version (default 0.1.0 with dev)
 #
-# Determine version with "help --version TARGET" or loop until successful:
-# * if TARGET exists and is a directory
-#     * if directory .hg
-#         * if pristine, hg tag matching semver format
-#         * if hg bookmark matching MAJOR.MINOR, add next PATCH and "-dev"
-#     * if directory .git
-#         * if pristine, git tag matching semver format
-#         * if git branch matching MAJOR.MINOR, add next PATCH and "-dev"
-#     * if encountered .hg or .git, "0.1.0-dev"
-# * TARGET basename, if in semver format
-# * longest dashed-suffix of TARGET basename in semver format
-#     * eg. "1.2.3" in "basename-1.2.3"
-# * restart with TARGET dirname, or exit with an error if TARGET is /
+# * The closest parent hg or git repository is used, or exit with an error if none found.
+# * If pristine and a semver tag is checked out, show that tag.
+# * If checked out hg bookmark or git branch matching MAJOR.MINOR, show that with next PATCH and "-dev".
+# * Show the initial version.
 
 pkg="$(readlink -f -- "$0")"
 pkg="${pkg%/*/*}"
 . "$pkg/lib/common.sh"
+dev=dev
+initial=
 handle_option() {
     case "$1" in
         quiet)
             [ $# = 1 ] || fatal 64 "unexpected value for option $1"
             quiet=true
+            ;;
+        dev)
+            [ -n "${2:-}" ] || fatal 64 "missing value for option $1"
+            case "$dev" in *-*) fatal 64 "invalid value for option $1" ;; esac
+            # TODO: more checking for valid prerelease syntax
+            dev="$2"
+            ;;
+        initial)
+            [ -n "${2:-}" ] || fatal 64 "missing value for option $1"
+            initial="$2"
             ;;
         *) fatal 64 "unknown option $1" ;;
         esac
@@ -82,14 +87,16 @@ while [ $# -gt 0 ]; do
         esac
     done
 
+if [ -z "$initial" ]; then
+    initial="0.1.0-$dev"
+    fi
 case "$#" in
     0) target=. ;;
     1) target="$1" ;;
     *) fatal 70 'unexpected arguments' ;;
     esac
-if help --version "$target" 2>/dev/null; then
-    exit 0
-    fi
+[ -e "$target" ] || fatal 64 "missing: $target"
+target="$(readlink -f -- "$target")"
 
 do_tags() {
     while [ -n "$tags" ]; do
@@ -116,14 +123,9 @@ do_tags_greater() { # PREFIX
             fi
         done
     if $found; then
-        exec printf %s\\n "$major.$minor.$(( patch + 1 ))-dev"
+        exec printf %s\\n "$major.$minor.$(( patch + 1 ))-$dev"
         fi
-    exec printf %s\\n "$1.0-dev"
-    }
-hg_is_pristine() {
-    # "pristine" = clean without unknown files
-    # hg identify doesn't consider unknown files when marking clean/dirty
-    [ -z "$(hg status | head -n1)" ]
+    exec printf %s\\n "$1.0-$dev"
     }
 hg_tag() {
     hg_is_pristine || return 0
@@ -152,13 +154,8 @@ git_branch() {
     do_tags_greater "$branch"
     }
 
-need_canon=false
 repo=
 while true; do
-    if $need_canon && [ -e "$target" ]; then
-        target="$(readlink -f -- "$target")"
-        need_canon=false
-        fi
     if [ -d "$target" ]; then
         cd "$target"
         if [ -d .hg ]; then
@@ -173,19 +170,9 @@ while true; do
             fi
         if [ -n "$repo" ]; then
             nonfatal "found $repo repo without a matching tag or branch"
-            exec printf %s\\n '0.1.0-dev'
+            exec printf %s\\n "$initial"
             fi
         fi
-    name="${target##*/}"
-    while true; do
-        if parse_semver "$name"; then
-            exec printf %s\\n "$name"
-            fi
-        case "$name" in
-            *-*) name="${name#*-}" ;;
-            *) break ;;
-            esac
-        done
     target="${target%/*}"
     [ -n "$target" ] || exit 69
     done

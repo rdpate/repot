@@ -92,7 +92,7 @@ else
     # TODO: auto-increment prerelease? prevent skipping numeric parts?
     ver_suffix="-$1"
     fi
-version="$("$pkg/cmd/version" --quiet)"
+version="$("$pkg/cmd/repo-version" --quiet)"
 version="${version%%+*}"
 case "$version" in
     *-*) ;;
