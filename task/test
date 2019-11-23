@@ -1,2 +1,17 @@
 #!/bin/sh -Cue
-true
+cd "${0%/*}/.."
+exec </dev/null >&2
+fatal() { rc="$1"; shift; printf %s\\n "${0##*/} error: $*" >&2 || true; exit "$rc"; }
+while [ $# -gt 0 ]; do case "$1" in --) shift; break ;; -) break ;; -*) fatal 64 'unexpected option' ;; *) break ;; esac; done
+[ $# = 0 ] || fatal 64 'unexpected arguments'
+
+if [ -e task/build ]; then
+    task/build
+    fi
+
+[ -e test ] || fatal 0 "missing: $(pwd)/test"
+[ -d test ] || fatal 70 "not a directory: $(pwd)/test"
+which redo-ifchange >/dev/null 2>&1 || fatal 69 'missing command: redo-ifchange'
+find test -name '.?*' -prune -o -type f -name '*.test' -print |
+sed 's/\.test$/.diff/' |
+xargs -d\\n redo-ifchange

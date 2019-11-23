@@ -14,6 +14,5 @@ if [ '' = "$1" ]; then
     set --
     fi
 cd "${0%/*}/.."
-# TODO: create task/test
 task/test
 repo-tag "$@"
