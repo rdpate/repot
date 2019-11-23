@@ -9,7 +9,7 @@
 #    --pre=PRE                prerelease (default dev)
 #    --initial=STRING         initial version (default 0.1.0)
 #
-# * The closest parent hg or git repository is used, or exit with an error if none found.
+# The closest parent hg or git repository is used, or exit with an error if none found.  The version shown is then the first working method:
 # * If pristine and a semver tag is checked out, show that tag.
 # * If checked out hg bookmark or git branch matching MAJOR.MINOR, show that with next PATCH and prerelease.
 # * Show the initial version.
